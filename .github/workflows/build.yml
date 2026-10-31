@@ -1,0 +1,51 @@
+name: Construire DofusAuto (Windows)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Décompresser la dernière version
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem -Path . -Filter *.zip | Sort-Object Name | Select-Object -Last 1
+          if (-not $zip) { throw "Aucun fichier .zip trouvé à la racine du dépôt" }
+          Write-Host "Archive utilisée : $($zip.Name)"
+          Expand-Archive -Path $zip.FullName -DestinationPath src -Force
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances
+        working-directory: src/DofusAuto
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Tests automatiques de la reconnaissance
+        working-directory: src/DofusAuto
+        run: python tests/test_vision.py
+
+      - name: Compiler l'application
+        working-directory: src/DofusAuto
+        run: pyinstaller --noconfirm --onedir --windowed --name DofusAuto main.py
+
+      - name: Ajouter les images et la configuration à côté du .exe
+        working-directory: src/DofusAuto
+        shell: pwsh
+        run: |
+          Copy-Item -Recurse assets dist/DofusAuto/assets
+          Copy-Item config.json dist/DofusAuto/config.json
+          Copy-Item LISEZMOI.txt dist/DofusAuto/LISEZMOI.txt
+
+      - name: Publier le résultat
+        uses: actions/upload-artifact@v4
+        with:
+          name: DofusAuto-Windows
+          path: src/DofusAuto/dist/DofusAuto
